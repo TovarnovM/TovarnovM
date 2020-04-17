@@ -9,6 +9,9 @@ class DParam:
         self.diff = None
         self.enabled = True
 
+    def __str__(self):
+        return f'Dparam({self.value}, "{self.name}", parent={self.parent})'
+
     def set_ind(self, i0):
         self.ind = i0
         return i0 + 1
@@ -33,6 +36,7 @@ class DParam:
     def fill_dy(self, t, dy):
         if self.ind >=0 and (self.diff is not None):
             if self.enabled:
+                # print(self.name, self.value)
                 dy[self.ind] = self.diff.get_value(t)
             else:
                 dy[self.ind] = 0
@@ -50,11 +54,14 @@ class DObject:
         self.diffs = []
         self._dparams_all = []
         self.children = []
+        self._enabled = True
         self.__dobefore_foos = set()
         self.__doafter_foos = set()
         self.__init_attrs()
         self.__init_beforeafters_foos()
-        self._enabled = True
+        
+    def __str__(self):
+        return f'{type(self).__name__}(name="{self.name}")'
 
     @property
     def enabled(self):
@@ -94,6 +101,9 @@ class DObject:
         i = 0   
         for dp in self.diffs:
             i = dp.set_ind(i)
+    
+    def get_full_names(self):
+        return [dp.full_name for dp in self.diffs]
 
     def get_y0(self, t0=0, rebuild=True):
         if rebuild:
@@ -104,15 +114,16 @@ class DObject:
             dp.fill_y(t0, res)
         return res
 
-    def synch(self, t, y):
-        self._dobefore(t, y)
-        for dp in self._dparams_all():
+    def synch(self, t, y):  
+        for dp in self._dparams_all:
             if dp.enabled:
-                dp.synch(t, y)
-        self._doafter(t, y)         
+                dp.synch(t, y)   
+        self._dobefore(t, y)
+        self._doafter(t, y)      
 
     def get_dydt(self, t, y):
         self.synch(t, y)
+        
         res = np.zeros_like(y)
         for dp in self.diffs:
             dp.fill_dy(t, res)
@@ -123,17 +134,24 @@ class DObject:
             if (not attr_name.startswith('__')):
                 attr = getattr(self, attr_name)
                 if isinstance(attr, DParam):
-                    my_dparam = DParam(attr._value, attr_name)
+                    my_dparam = DParam(attr.value, attr_name)
                     setattr(self, attr_name, my_dparam)
                     self.__add_dparam(my_dparam)
 
     def __init_beforeafters_foos(self):
         for attr_name in self.__dir__():
-            attr = getattr(self, attr_name)
-            if hasattr(attr, 'dobefore_flag') and attr.dobefore_flag:
-                self.__dobefore_foos.add(attr)
-            if hasattr(attr, 'doafter_flag') and attr.doafter_flag:
-                self.__doafter_foos.add(attr)
+            if (not attr_name.startswith('__')):
+                attr = getattr(self, attr_name)
+                if hasattr(attr, 'dobefore_flag') and attr.dobefore_flag:
+                    self._add_dobefore_foo(attr)
+                if hasattr(attr, 'doafter_flag') and attr.doafter_flag:
+                    self._add_doafter_foo(attr)
+
+    def _add_doafter_foo(self, foo):
+        self.__doafter_foos.add(foo)
+
+    def _add_dobefore_foo(self, foo):
+        self.__dobefore_foos.add(foo)
 
     def add_child(self, child):
         self.children.append(child)
@@ -144,16 +162,16 @@ class DObject:
         dparam.parent = self
 
     def _dobefore(self, t, y):
-        for foo in self.__dobefore_foos:
-            foo(t, y)
         for child in self.children:
             child._dobefore(t, y)
+        for foo in self.__dobefore_foos:
+            foo(t, y)
 
     def _doafter(self, t, y):
-        for foo in self.__doafter_foos:
-            foo(t, y)
         for child in self.children:
             child._doafter(t, y)
+        for foo in self.__doafter_foos:
+            foo(t, y)
 
 
 def dobefore(method):
@@ -184,12 +202,12 @@ class SomeTst(DObject):
 
 
 
-d = SomeTst('d')
-d2 = SomeTst('d2')
-d3 = SomeTst('d3')
-d.add_child(d2)
-d2.add_child(d3)
+# d = SomeTst('d')
+# d2 = SomeTst('d2')
+# d3 = SomeTst('d3')
+# d.add_child(d2)
+# d2.add_child(d3)
 
-for dp in d.get_diffs():
-    print(dp.full_name)
+# for dp in d.get_diffs():
+#     print(dp.full_name)
 
